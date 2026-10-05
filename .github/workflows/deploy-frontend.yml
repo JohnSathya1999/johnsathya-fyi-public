@@ -1,0 +1,39 @@
+name: Deploy frontend
+
+# This repo has no application code (see README.md) — the checkout step
+# below pulls the real code from the PRIVATE repo at build time, using
+# PRIVATE_REPO_TOKEN. That code lives only in this run's ephemeral
+# runner; it is never committed or stored here.
+#
+# Triggered by: a repository_dispatch sent by the private repo's
+# Cloudflare Worker right after it commits a publish/unpublish to
+# content/*.md — not by any push to this repo (there's nothing to push
+# here). workflow_dispatch is also available for a manual re-run.
+
+on:
+  repository_dispatch:
+    types: [content-published, content-unpublished]
+  workflow_dispatch: {}
+
+jobs:
+  deploy-frontend:
+    name: Deploy frontend (johnsathya.fyi)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: JohnSathya1999/johnsathya-fyi
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - name: Deploy to Cloudflare
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx wrangler deploy

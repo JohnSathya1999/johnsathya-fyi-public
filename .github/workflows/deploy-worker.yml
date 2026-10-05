@@ -1,0 +1,48 @@
+name: Deploy worker
+
+# This repo has no application code (see README.md) — the checkout step
+# below pulls the real code from the PRIVATE repo at build time, using
+# PRIVATE_REPO_TOKEN. That code lives only in this run's ephemeral
+# runner; it is never committed or stored here.
+#
+# Triggered by: a repository_dispatch sent manually (by me, after pushing
+# a worker/ code change to the private repo during development) — unlike
+# deploy-frontend, this is NOT triggered by content publishes, since a
+# content-only publish never touches worker code or the D1 schema.
+# workflow_dispatch is also available for a manual re-run.
+
+on:
+  repository_dispatch:
+    types: [worker-code-changed]
+  workflow_dispatch: {}
+
+jobs:
+  deploy-worker:
+    name: Deploy API worker (api.johnsathya.fyi)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: JohnSathya1999/johnsathya-fyi
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - name: Apply D1 migrations (remote)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx wrangler d1 migrations apply johnsathya-fyi-db --remote
+      - name: Deploy Worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx wrangler deploy
